@@ -1,0 +1,79 @@
+
+/* Admin map header 3-part layout */
+.app-header {
+  /* Override app.css app-header to be justify-content: space-between for 3 parts */
+  justify-content: space-between;
+  padding: 0 16px; /* Increased padding for better spacing */
+}
+
+/* Visual feedback for button clicks */
+.btn-clicked {
+  transform: scale(0.95);
+  transition: transform 0.1s ease;
+}
+
+/* Center the search wrap and limit its width */
+.search-wrap {
+  flex: 1 1 0px; /* flex: 1 1 0 means take remaining space but can shrink */
+  max-width: 420px;
+  margin: 0 auto;
+  width: 100%; /* Ensure it takes the flex space */
+}
+
+/* Position the map-controls on the right, prevent shrinking */
+.map-controls {
+  flex-shrink: 0;
+  margin-left: 16px; /* Space between search and button */
+  /* Override the fixed positioning from before */
+  position: static;
+  top: auto;
+  right: auto;
+  transform: none;
+}
+
+/* Responsive: under 700px, show only icon and hide text */
+@media (max-width: 699px) {
+  #btn-add-station-map .add-station-icon {
+    width: 16px;
+    height: 16px;
+  }
+  #btn-add-station-map span {
+    display: none; /* Hide the text "Add station" */
+  }
+  #btn-add-station-map {
+    /* Ensure button is square and only shows icon */
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #btn-add-station-map svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* Ensure button has proper aria-label when text is hidden */
+#btn-add-station-map[aria-label] {
+  /* Keep the aria-label if set, otherwise we might need to add it via JS */
+}
+
+/* Also adjust search wrap padding on small screens */
+@media (max-width: 699px) {
+  .search-wrap {
+    max-width: 260px; /* Narrower on small screens */
+  }
+}
+
+/* Override any conflicting styles from app.css header-tools */
+/* Since we moved elements out of header-tools, we can reduce its size or hide it */
+.header-tools {
+  display: none; /* Hide the old centered container since we moved its children */
+}
+
+/* Make sure the header still has proper height */
+.app-header {
+  min-height: var(--topbar-h);
+}

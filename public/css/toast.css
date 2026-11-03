@@ -1,0 +1,56 @@
+/*
+ * The toast, in one place, for every page that has one: the public map, the
+ * admin map and the dashboard.
+ *
+ * It used to be declared three times, differently. app.css put it at top: 14px,
+ * admin.css at bottom: 22px, and the admin map loaded both plus an override.
+ * Two consequences, both visible:
+ *
+ *   - On the admin map the element ended up with `top` *and* `bottom` set at
+ *     once, and a positioned box with two anchors is not positioned by them, it
+ *     is stretched between them: the message rendered as a 229x764px slab.
+ *   - On the public map there was only a `top`, but 14px is inside the 56px
+ *     header, so the toast painted over the centred search box.
+ *
+ * One anchor, one definition, loaded last on each page.
+ *
+ * toast.js owns when a message appears and when it goes; this owns how it looks.
+ */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  /* Cleared explicitly, not merely omitted. An earlier version set `top` here
+     while admin.css set `bottom`, and the two together stretched the box. */
+  top: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  height: auto;
+  max-height: none;
+  width: max-content;
+  max-width: min(92vw, 420px);
+  margin: 0;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: #16202c;
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 600;
+  text-align: center;
+  /* Above the map controls (850-1000) and the search results (1100), so a
+     message is never tucked under the legend or the station list. */
+  z-index: 1300;
+  box-shadow: var(--shadow);
+  /* The map underneath has to stay clickable while a message is up. */
+  pointer-events: none;
+}
+
+/* The failure state. */
+.toast.toast-error {
+  background: #7f1d1d;
+}
+
+/* toast.js empties and hides the element between messages; this is what keeps
+   the empty box off the screen. */
+.toast[hidden] { display: none; }

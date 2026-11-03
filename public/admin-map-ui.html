@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
+<title>Gas Stations in Bangued, Abra | Interactive Map</title>
+<meta name="description" content="Interactive map of gasoline stations in Bangued, Abra, Philippines, with current fuel prices.">
+<!-- Order matters.
+     app.css first: it owns the header, the map controls, the legend, the
+     station list, the toast and the pins. admin.css second, because the station
+     dialog this page opens needs its form, modal, button and table styling,
+     which exist nowhere else - the "Add station" flow was unopenable without
+     it. admin-map.css last, so the rules specific to this page win. -->
+<link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/css/admin.css">
+<link rel="stylesheet" href="/css/admin-map.css">
+<!-- Loaded last: the toast is declared once, here, for every page. -->
+<link rel="stylesheet" href="/css/toast.css">
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='19' font-size='19'>&#128673;</text></svg>">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-title">
+    <span>&#128673; Gas Stations</span>
+    <small>Bangued, Abra</small>
+  </div>
+
+  <div class="header-tools">
+    <div class="search-wrap" id="search-wrap">
+      <span class="search-icon" aria-hidden="true">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+          <circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path>
+        </svg>
+      </span>
+      <label class="visually-hidden" for="search" style="position:absolute;left:-9999px">Search stations</label>
+      <input id="search" type="search" autocomplete="off" placeholder="Search station&hellip;"
+             role="combobox" aria-expanded="false" aria-controls="search-results" aria-autocomplete="list">
+      <button class="search-clear" id="search-clear" type="button" aria-label="Clear search">&times;</button>
+      <div class="search-results" id="search-results" role="listbox"></div>
+    </div>
+  </div>
+
+  <!-- The add-station control sits in the header's right-hand slot, clear of the
+       centred search. It carries its own class rather than .btn because the
+       button's appearance here - pill, 38px, crosshair state - is the map's,
+       not the dashboard's; admin-map.css owns it. -->
+  <div class="header-actions">
+    <button class="add-station-btn" type="button" id="btn-add-station-map" aria-pressed="false">
+      <svg class="add-station-btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+      <span class="add-station-btn-label">Add station</span>
+    </button>
+  </div>
+</header>
+
+<main id="map" aria-label="Map of gasoline stations in Bangued, Abra"></main>
+
+<!-- Google-style map-type pill, anchored bottom-left like Google Maps. It maps
+     onto the API's own map types, so Google's built-in control is switched off
+     in map.js. The legend's default anchor stacks above this row. -->
+<div class="mapctl">
+  <div class="layer-switch" role="group" aria-label="Base map layer">
+    <button type="button" id="layer-street" aria-pressed="true">Default</button>
+    <button type="button" id="layer-satellite" aria-pressed="false">Satellite</button>
+    <button type="button" id="layer-hybrid" aria-pressed="false">Hybrid</button>
+  </div>
+</div>
+
+<!-- Dropdown anchor. The toggle and the panel share one fixed wrapper so the
+     panel can position itself with top:100%/right:0 and stay glued to the
+     button's own height and right edge at any zoom, header wrap or font size,
+     with no magic pixel offsets to keep in sync. -->
+<div class="list-ctl">
+  <button class="list-toggle" type="button" id="toggle-list"
+          aria-expanded="false" aria-controls="list-panel"
+          title="Show or hide the station list">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+      <path d="M4 6h16M4 12h16M4 18h16"></path>
+    </svg>
+    <span>Stations</span>
+  </button>
+
+  <aside class="list-panel" id="list-panel" aria-label="Gas station list">
+    <div class="list-head">
+      <span>Gas Stations</span>
+      <span class="list-count" id="list-count">0</span>
+    </div>
+    <div class="list-body" id="list-body"></div>
+  </aside>
+</div>
+
+<section class="legend" id="legend" aria-label="Map legend">
+  <div class="legend-head" id="legend-head">
+    <h2>Legend</h2>
+    <button class="legend-collapse" id="legend-collapse" type="button" aria-expanded="true" aria-controls="legend-body" aria-label="Collapse legend">&minus;</button>
+  </div>
+  <div class="legend-body" id="legend-body">
+    <div id="legend-brands"></div>
+    <div class="legend-actions">
+      <button type="button" id="legend-all">Show all</button>
+      <button type="button" id="legend-none">Hide all</button>
+    </div>
+    <p class="legend-note">
+      Untick a brand to hide its stations.
+      The dashed line is the Bangued municipal boundary.
+    </p>
+  </div>
+</section>
+<!-- ============================ Station create / edit ============================ -->
+<!-- Copied verbatim from admin.html. The admin map's "Add station" flow calls
+     openAddStationModal() / saveStation(), which read #station-form and every
+     f-* field by name, so this dialog has to exist on the map page too - it used
+     to exist only on the dashboard, where clicking the map button therefore
+     threw on a null form and nothing could be saved. -->
+<div class="modal-backdrop" id="station-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="station-modal-title">
+    <div class="modal-head">
+      <h2 id="station-modal-title">Add station</h2>
+      <button class="x" type="button" data-close aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-error" id="station-error" role="alert" hidden></div>
+
+      <form id="station-form" novalidate>
+        <div class="grid-2">
+          <div class="field">
+            <label for="f-brand">Brand <span class="req">*</span></label>
+            <select id="f-brand" required></select>
+          </div>
+          <div class="field">
+            <label for="f-name">Station name <span class="req">*</span></label>
+            <input type="text" id="f-name" maxlength="160" required>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="f-address">Street address</label>
+          <input type="text" id="f-address" maxlength="400" placeholder="e.g. Torrijos Street, Zone 5">
+        </div>
+
+        <div class="grid-2">
+          <div class="field">
+            <label for="f-barangay">Barangay</label>
+            <input type="text" id="f-barangay" maxlength="120" placeholder="e.g. Lipcan">
+          </div>
+          <div class="field">
+            <label for="f-hours">Operating hours</label>
+            <input type="text" id="f-hours" maxlength="200" placeholder="e.g. 24 hours">
+          </div>
+        </div>
+
+        <fieldset>
+          <legend>Location</legend>
+          <div class="picker">
+            <div class="picker-map" id="picker"></div>
+            <p class="picker-help">
+              Click the map or drag the pin to set the exact position, or just type the
+              coordinates below. Positions outside Bangued are rejected when you save.
+              Leave the coordinates empty to keep this station off the public map as a placeholder.
+            </p>
+            <p class="picker-help">
+              OpenStreetMap &mdash; no API key or quota required.
+            </p>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label for="f-lat">Latitude</label>
+              <!-- step="any" rather than 0.000001: a fixed step makes the
+                   field :invalid for any value that is not an exact multiple
+                   of it, which blocks form submission. Range is still enforced
+                   in validateCoords() so a bad pair cannot be saved. -->
+              <input type="number" id="f-lat" step="any" min="-90" max="90"
+                     inputmode="decimal" placeholder="17.596500">
+            </div>
+            <div class="field">
+              <label for="f-lng">Longitude</label>
+              <input type="number" id="f-lng" step="any" min="-180" max="180"
+                     inputmode="decimal" placeholder="120.616700">
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label for="f-conf">Coordinate confidence</label>
+              <select id="f-conf">
+                <option value="confirmed">Confirmed &mdash; verified on site</option>
+                <option value="approximate">Approximate &mdash; needs verification</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="checkline" style="margin-top:22px">
+                <input type="checkbox" id="f-active" checked>
+                Show on public map
+              </label>
+            </div>
+          </div>
+          <div class="field">
+            <label for="f-manager">Station Manager</label>
+            <select id="f-manager">
+              <option value="">None (Unassigned)</option>
+            </select>
+            <p class="hint">Assign this station to a station manager for restricted access.</p>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Contact &amp; notes</legend>
+          <div class="grid-2">
+            <div class="field">
+              <label for="f-phone">Contact phone</label>
+              <input type="text" id="f-phone" maxlength="60" placeholder="e.g. 0917 123 4567">
+            </div>
+            <div class="field">
+              <label for="f-email">Contact email</label>
+              <input type="email" id="f-email" maxlength="160" placeholder="optional">
+            </div>
+          </div>
+          <div class="field">
+            <label for="f-notes">Notes</label>
+            <textarea id="f-notes" maxlength="2000" placeholder="Anything worth showing in the station popup."></textarea>
+            <p class="hint">Notes are shown to everyone in the station popup.</p>
+          </div>
+          <div class="field">
+            <label for="f-osm">OpenStreetMap reference</label>
+            <input type="text" id="f-osm" maxlength="60" placeholder="e.g. node/4525780866">
+            <p class="hint">Optional provenance note, e.g. the OSM object the coordinates came from.</p>
+          </div>
+        </fieldset>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn btn-primary" type="submit" form="station-form" id="station-save">Save station</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================== Fuel prices modal ============================== -->
+<div class="modal-backdrop" id="price-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="price-modal-title">
+    <div class="modal-head">
+      <h2 id="price-modal-title">Fuel prices</h2>
+      <button class="x" type="button" data-close aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-error" id="price-error" role="alert" hidden></div>
+      <p class="hint" style="margin:0 0 14px" id="price-sub"></p>
+
+      <!-- The price inputs live in a real form so the footer button can submit
+           it via form="price-form" even though the button sits outside the
+           form (it has to, for the footer's layout). Without this there was no
+           #price-form at all, so nothing could trigger savePrices(). -->
+      <form id="price-form" novalidate>
+        <div class="field">
+          <label for="p-effective">Effective as of</label>
+          <input type="datetime-local" id="p-effective" name="effectiveAt">
+          <p class="hint">Shown to the public as &ldquo;last updated&rdquo;.</p>
+        </div>
+
+        <div class="price-rows" id="price-rows"></div>
+        <button class="btn btn-sm" type="button" id="price-add" style="margin-top:10px">+ Add fuel type</button>
+        <!-- Autocomplete hints for the fuel-type inputs rendered into #price-rows.
+             Populated from GET /api/admin/config so there is a single source of
+             truth; without it every row's list="fuel-types" pointed at nothing. -->
+        <datalist id="fuel-types"></datalist>
+      </form>
+
+      <details style="margin-top:20px">
+        <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--ink-2)">Price change history</summary>
+        <div id="price-history" style="margin-top:10px"></div>
+      </details>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn btn-primary" type="submit" form="price-form" id="price-save">Save prices</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================== Change password ============================== -->
+<div class="modal-backdrop" id="password-modal" hidden>
+  <div class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="password-modal-title">
+    <div class="modal-head">
+      <h2 id="password-modal-title">Change password</h2>
+      <button class="x" type="button" data-close aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-error" id="password-error" role="alert" hidden></div>
+      <form id="password-form" novalidate>
+        <div class="field">
+          <label for="pw-current">Current password <span class="req">*</span></label>
+          <input type="password" id="pw-current" autocomplete="current-password" required>
+        </div>
+        <div class="field">
+          <label for="pw-new">New password <span class="req">*</span></label>
+          <input type="password" id="pw-new" autocomplete="new-password" minlength="8" required>
+          <p class="hint">At least 8 characters. The sample password should be changed before going live.</p>
+        </div>
+        <div class="field">
+          <label for="pw-confirm">Confirm new password <span class="req">*</span></label>
+          <input type="password" id="pw-confirm" autocomplete="new-password" minlength="8" required>
+        </div>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn btn-primary" type="submit" form="password-form" id="password-save">Update password</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<div class="loader" id="loader">
+  <div class="loader-box">
+    <div class="spinner" role="presentation"></div>
+    <p id="loader-text">Loading gas stations&hellip;</p>
+  </div>
+</div>
+
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script src="/js/icons.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/time.js"></script>
+<script src="/js/legend.js"></script>
+<script src="/js/toast.js"></script>
+<script src="/js/map.js"></script>
+<script src="/js/admin-map.js"></script>
+</body>
+</html>

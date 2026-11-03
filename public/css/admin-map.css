@@ -1,0 +1,588 @@
+/*
+ * Admin map page only (/admin/map).
+ *
+ * Loaded last by views/admin/map.blade.php, the only page that uses it. The public map
+ * (index.html) never loads this file, so nothing here can change it.
+ */
+
+ /* ---------- Undoing admin.css's overrides ---------- */
+
+/*
+ * admin.css is loaded here for its dialog, form and table rules - the station
+ * dialog this page opens needs them and they exist nowhere else - and it is
+ * loaded second, so where the two stylesheets style the same thing the dashboard
+ * wins. Only the collisions that would visibly change the map are undone; the
+ * rest (--radius, --font, .station-pin) are identical in both files.
+ */
+:root {
+  /* admin.css's own hover shade for --accent. */
+  --accent-dark: #0b5952;
+  /* app.css's softer shadow, which the map's floating controls are drawn with. */
+  --shadow-sm: 0 2px 10px rgba(16, 32, 48, 0.1);
+}
+
+/* ---------- Toast ---------- */
+
+/* .toast is declared once, in toast.css, and loaded after this file - so it
+   outranks the rules admin.css used to carry and cannot be re-anchored twice. */
+
+/* ---------- Header: the right-hand action slot ---------- */
+
+/*
+ * app.css pins .header-tools to the horizontal centre of the header as an
+ * absolutely positioned box, so the header's flex layout has exactly one
+ * in-flow child: the title. This wrapper is what pushes the add button to the
+ * right edge - margin-left:auto takes all the free space, and the button sits
+ * at the end of it.
+ */
+.header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/*
+ * The search, centred between the two.
+ *
+ * width as well as max-width: .header-tools is absolutely positioned, so it
+ * shrink-wraps its content and .search-wrap would otherwise stay at the input's
+ * intrinsic width (229px measured) no matter how generous the cap was.
+ */
+.search-wrap {
+  width: 420px;
+  max-width: 100%;
+}
+
+/*
+ * Narrow header: the same three zones, but on two rows.
+ *
+ * The single-row layout needs roughly 800px - a 207px title, the 420px search,
+ * a 122px button and the gaps between them - and the search is centred by
+ * absolute positioning rather than by flex, so below that it would sit on top
+ * of the title. app.css already collapses the header to two rows at 860px, but
+ * not far enough for a 420px search, and its version left three rows of content
+ * in a 96px header: the title was clipped off the top (measured at y = -6) and
+ * the button hung 5px past the header's bottom edge. Restating the whole
+ * arrangement at 1000px puts the title and button on row one and the full-width
+ * search on row two at every width that cannot afford one row.
+ */
+@media (max-width: 1000px) {
+  /*
+   * Restated from app.css's own 860px breakpoint, which this block widens to
+   * 1000px. Without them the 861-1000px band got the two-row arrangement inside
+   * a 56px, non-wrapping header: the rows overlapped each other and the search
+   * was stretched off-centre by flex-grow. --header-h has to move in step
+   * because #map is inset by it.
+   */
+  :root { --header-h: 96px; }
+  .app-header {
+    height: var(--header-h);
+    flex-wrap: wrap;
+  }
+
+  .app-title {
+    order: 1;
+    width: auto;
+    flex: 0 0 auto;
+  }
+  .header-actions { order: 2; }
+
+  /* The search takes the second row on its own. */
+  .header-tools {
+    order: 3;
+    position: static;
+    transform: none;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .search-wrap {
+    flex: 0 1 auto;
+    width: 420px;
+    max-width: 100%;
+  }
+}
+
+/* ---------- Header: back to dashboard ---------- */
+
+/*
+ * The header's left slot, ahead of the title.
+ *
+ * .header-tools is absolutely positioned, so the search is centred over the
+ * viewport and this button cannot push it off-axis. It is the title's flex
+ * sibling rather than a wrapper around it, so the header keeps exactly three
+ * zones: this button plus the title on the left, the search in the centre, the
+ * add button on the right.
+ *
+ * flex: 0 0 auto so the 36px target is never squeezed by a long title.
+ */
+.back-dashboard {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.back-dashboard:hover {
+  background: #eef2f6;
+  box-shadow: var(--shadow-sm);
+}
+
+.back-dashboard:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+ * An inline <svg> with only a viewBox falls back to the 300x150 replaced-element
+ * default, so the size has to be stated - the same reason
+ * .add-station-btn-icon carries one.
+ */
+.back-dashboard-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: block;
+}
+
+/* Narrow header: icon only, so the button stays a compact 36px square. */
+@media (max-width: 700px) {
+  .back-dashboard { padding: 0 9px; }
+  .back-dashboard-label { display: none; }
+}
+
+/* ---------- Edit station dialog: two columns with the price editor ---------- */
+
+/*
+ * The station dialog opened from a pin, with the price editor as its left
+ * column. admin.css owns .modal and .modal-body, and both assume a single
+ * scrolling column, so the overrides below are scoped to .station-edit-card and
+ * the dashboard's dialogs are untouched.
+ */
+.station-edit-card {
+  max-width: 900px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * admin.css centres the card with `margin: auto` inside a backdrop that scrolls,
+ * so at 90vh there is no room left to scroll and a long form would run off the
+ * bottom. Capping the whole card and letting the two columns scroll keeps the
+ * head and the Save/Cancel footer always reachable.
+ */
+
+/*
+ * The two columns.
+ *
+ * padding:0 hands the gutter to the columns themselves, and min-height:0 is what
+ * lets both children shrink inside the flex parent rather than forcing the card
+ * past its 90vh cap. overflow:hidden on each column is what makes them scroll
+ * independently.
+ */
+.station-edit-body {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+  min-height: 0;
+  overflow: hidden;
+  /* admin.css caps .modal-body at min(66vh, 640px) for a single scrolling
+     column. Two independent columns need the card's own 90vh instead, so the
+     inherited cap is dropped here. */
+  max-height: none;
+}
+
+.station-edit-form {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+}
+
+/* The left column. Collapsed it is just the header; expanded it holds the
+   editor. Background and right border mark it off from the form.
+
+   [hidden] is stated because the create dialog hides the panel outright, and a
+   flex item with an explicit flex-basis would otherwise keep its 280px. */
+.edit-prices[hidden] { display: none; }
+
+.edit-prices {
+  flex: 0 0 280px;
+  width: 280px;
+  min-height: 0;
+  overflow-y: auto;
+  background: #fbfcfd;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+}
+
+.edit-prices-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 15px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: background 0.15s, color 0.15s;
+}
+
+.edit-prices-head:hover { background: #eef2f6; }
+
+.edit-prices-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* An inline <svg> with only a viewBox falls back to the 300x150 replaced-element
+   default, so both glyphs carry an explicit size. */
+.edit-prices-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.edit-prices-title { flex: 1 1 auto; }
+
+/* Points down when collapsed and rotates up when open. */
+.edit-prices-chevron {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.edit-prices.is-open .edit-prices-chevron { transform: rotate(180deg); }
+
+/*
+ * The reveal.
+ *
+ * max-height and opacity rather than display:none, so the column animates open
+ * over 200ms instead of snapping. The height cap is generous because the
+ * column scrolls on its own - the animation is only ever showing a few rows.
+ */
+.edit-prices-reveal {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.2s ease, opacity 0.2s ease;
+}
+
+.edit-prices.is-open .edit-prices-reveal { max-height: 1400px; opacity: 1; }
+
+.edit-prices-body { padding: 13px 15px 16px; }
+
+.edit-prices-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  margin-bottom: 11px;
+}
+
+.edit-prices-empty {
+  margin: 0 0 11px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+/* One fuel per row. A grid rather than admin.css's .price-row, which is sized
+   for the dashboard's wider modal and puts the remove button on its own track. */
+.edit-price-row {
+  display: grid;
+  grid-template-columns: 1fr 88px 26px;
+  gap: 7px;
+  align-items: start;
+}
+
+.edit-price-row .field { margin-bottom: 0; }
+.edit-price-row .field label { font-size: 11px; }
+.edit-price-row input[type='number'] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.edit-price-remove {
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 6px 2px;
+  border-radius: 6px;
+  margin-top: 17px;
+}
+.edit-price-remove:hover { background: var(--danger-bg); color: var(--danger); }
+
+.edit-price-error {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--danger);
+}
+
+.edit-prices-summary { margin: 11px 0 0; }
+
+/*
+ * Narrow: one column, and the price editor becomes an accordion above the form
+ * rather than a side panel. The column sheds its fixed width, the border moves
+ * from right to bottom, and the reveal animates on height alone - there is no
+ * left column left to keep at 280px.
+ */
+@media (max-width: 700px) {
+  .station-edit-body {
+    display: block;
+    overflow-y: auto;
+    /* One scrolling column again, so the card's 90vh has to reach the body -
+       the override above took .modal-body's own cap away. */
+    max-height: none;
+  }
+
+  .station-edit-form { overflow: visible; }
+
+  .edit-prices {
+    width: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    overflow: visible;
+  }
+}
+
+/* ---------- Station manager: dashboard, and shared state ---------- */
+
+/*
+ * .is-price-only is set on <body> when the signed-in user is a station manager.
+ *
+ * The dashboard does NOT load this file - it loads only admin.css - so the one
+ * rule the two pages share lives in admin.css instead. Everything here is the
+ * admin map's half: the "+ Add station" button and the greyed-out station
+ * fields in the Edit station dialog.
+ *
+ * The dashboard hides its own controls by leaving them out of the markup in
+ * admin.js, so no CSS is involved there.
+ */
+
+/*
+ * display:none rather than visibility:hidden so the header's right-hand slot
+ * collapses and the search keeps its centred position instead of being pushed
+ * left by an invisible button.
+ */
+.is-price-only .add-station-btn { display: none; }
+
+/* ---------- Station manager (prices-only dialog) ---------- */
+
+/*
+ * The read-only form column. The note goes first, above the fields, so it is
+ * the first thing read rather than a footnote under a wall of grey.
+ */
+.prices-only-note {
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #f4f6f9;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.prices-only-note[hidden] { display: none; }
+
+/*
+ * The disabled fields. opacity rather than a colour change, because the browser
+ * already greys a disabled control and this pushes it further so the difference
+ * between a disabled field and an enabled one is unmistakable at a glance.
+ */
+.is-price-only .station-edit-form input:disabled,
+.is-price-only .station-edit-form select:disabled,
+.is-price-only .station-edit-form textarea:disabled,
+.is-price-only .station-edit-form .checkline input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* The location mini-map is a reference for a manager, not an editor: the pin
+   drag is disabled in JS (applyPricesOnlyMode), and the reduced opacity makes
+   the map read as background rather than as a control. */
+.is-price-only .picker-map { opacity: 0.6; pointer-events: none; }
+
+/* ---------- Station manager's own pin, highlighted ---------- */
+
+/*
+ * A pulsing ring around the one station a manager is answerable for, so "mine"
+ * is legible at a glance while every other pin stays exactly as it is.
+ *
+ * Drawn with ::before on the tooltip Leaflet positions over the marker, which
+ * avoids a second draggable marker and cannot be moved by accident. The tooltip
+ * wrapper is stripped of Leaflet's own chrome - no arrow, no background, no
+ * pointer events - so only the ring shows.
+ */
+.mine-marker {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.mine-marker::before { display: none; }
+
+.mine-ring {
+  display: block;
+  width: 26px;
+  height: 26px;
+  margin: -5px;
+  border: 2.5px solid var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+  animation: mine-pulse 2.4s ease-out infinite;
+}
+
+@keyframes mine-pulse {
+  0% {
+    transform: scale(0.75);
+    opacity: 1;
+  }
+  70% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+/*
+ * Honours a reader who has asked for less motion: the ring stays, still, rather
+ * than disappearing entirely - it is the marker saying "this one is yours", not
+ * decoration.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .mine-ring { animation: none; }
+}
+
+/* ---------- Add station button ---------- */
+
+.add-station-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.add-station-btn:hover {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+}
+
+.add-station-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+ * The "+" as it is armed. --danger is red, matching the cancel action and
+ * reusing the same token admin.css paints its .btn-danger with, rather than
+ * introducing another colour.
+ */
+.add-station-btn.is-adding {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+.add-station-btn.is-adding:hover { background: #a51f1f; border-color: #a51f1f; }
+
+/*
+ * The icon needs an explicit size. An inline <svg> with only a viewBox falls
+ * back to the 300x150 replaced-element default, which is what rendered a
+ * screen-filling "+" over the header. flex:0 0 auto stops it being squeezed
+ * when the label is long, and the parent's gap does the spacing.
+ */
+.add-station-btn-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  display: block;
+}
+
+/* Narrow header: icon only, so the button stays a fixed 36px target. */
+@media (max-width: 860px) {
+  .add-station-btn { height: 36px; padding: 0 11px; }
+  .add-station-btn-label { display: none; }
+}
+
+/* ---------- Add mode hint ---------- */
+
+/*
+ * Shown while armed. Positioned below the header rather than over the map
+ * centre, so it cannot sit on top of the pin being placed.
+ */
+.add-mode-hint {
+  position: fixed;
+  top: calc(var(--header-h) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1200;
+  background: rgba(22, 32, 44, 0.92);
+  color: #fff;
+  padding: 9px 16px;
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  max-width: calc(100vw - 28px);
+  /* The map underneath must stay clickable while the hint is up. */
+  pointer-events: none;
+}
+
+/* ---------- Temporary pin, dropped before the form opens ---------- */
+
+/*
+ * Leaflet draws a grey frame around divIcon content unless it is neutralised,
+ * which is what .station-pin does for the real pins. The dropped pin uses its
+ * own class, so it needs the same treatment or it renders as a boxed glyph.
+ */
+.temp-pin {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  filter: drop-shadow(0 1px 3px rgba(16, 32, 48, 0.35));
+}
